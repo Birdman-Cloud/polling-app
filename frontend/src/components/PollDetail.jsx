@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom'; // Import useNavigate
 import { API_BASE_URL } from '../services/api';
 
 // Basic email validation (presence of @)
@@ -10,16 +11,15 @@ function PollDetail({ pollId }) {
   const [poll, setPoll] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [userEmail, setUserEmail] = useState(''); // State for email input
-  const [votingOptionId, setVotingOptionId] = useState(null); // Track which option is being voted on
-  const [hasVoted, setHasVoted] = useState(false); // Track if user has successfully voted in this session/load
+  const [userEmail, setUserEmail] = useState(''); // State for email input (used for voting AND deletion auth)
+  const [votingOptionId, setVotingOptionId] = useState(null);
+  const [hasVoted, setHasVoted] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false); // State for deletion process
+  const navigate = useNavigate(); // Hook for navigation
 
-  // Use useCallback to memoize fetchPoll to avoid re-creating it on every render
   const fetchPoll = useCallback(async () => {
-    // Don't reset loading if only re-fetching after vote
-    // setLoading(true);
-    // Keep previous error message until successful fetch or new error
-    // setError(null);
+    // setLoading(true); // Only set loading true on initial mount/pollId change
+    // setError(null); // Clear error only on success
     try {
       const response = await fetch(`${API_BASE_URL}/polls/${pollId}`);
       if (!response.ok) {
@@ -31,30 +31,32 @@ function PollDetail({ pollId }) {
       setError(null); // Clear error on successful fetch
     } catch (err) {
       setError(err.message);
+      setPoll(null); // Ensure poll is null if fetch fails after initial load
       console.error(`Failed to fetch poll ${pollId}:`, err);
     } finally {
-      setLoading(false); // Always set loading false after attempt
+      setLoading(false);
     }
-  }, [pollId]); // Re-fetch only if pollId changes
+  }, [pollId]);
 
   useEffect(() => {
-    setLoading(true); // Set loading true on initial load or pollId change
-    setHasVoted(false); // Reset voted status when poll changes
-    setUserEmail(''); // Clear email when poll changes
+    setLoading(true);
+    setHasVoted(false);
+    setUserEmail('');
+    setIsDeleting(false); // Reset deleting state
     fetchPoll();
   }, [fetchPoll]); // Depend on the memoized fetchPoll function
 
   const handleVote = async (optionId) => {
-    if (votingOptionId || hasVoted) return; // Prevent multiple votes at once or if already voted
+    // ... (Keep existing handleVote function as is) ...
+    if (votingOptionId || hasVoted) return;
 
-    // Validate email before sending
     if (!isEmailLike(userEmail)) {
         setError("Please enter a valid email address to vote.");
         return;
     }
 
-    setVotingOptionId(optionId); // Indicate voting is in progress for this option
-    setError(null); // Clear previous errors
+    setVotingOptionId(optionId);
+    setError(null);
 
     try {
       const response = await fetch(`${API_BASE_URL}/options/${optionId}/vote`, {
@@ -62,67 +64,108 @@ function PollDetail({ pollId }) {
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ user_email: userEmail }), // Send email in body
+        body: JSON.stringify({ user_email: userEmail }),
       });
 
-      const responseData = await response.json().catch(() => ({})); // Try getting JSON response
+      const responseData = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-         // Handle specific "already voted" error
          if (response.status === 409) {
-             setHasVoted(true); // Mark as voted even if backend caught it
+             setHasVoted(true);
              throw new Error(responseData.message || "You have already voted on this poll.");
          }
          throw new Error(responseData.message || `HTTP error! status: ${response.status}`);
       }
-
-      // Vote successful
-      setHasVoted(true); // Mark as voted successfully for this session
-      // Re-fetch poll data to show updated counts
+      setHasVoted(true);
       await fetchPoll();
-      // Optionally clear email field after successful vote
-      // setUserEmail('');
 
     } catch (err) {
       setError(`Failed to vote: ${err.message}`);
       console.error("Vote failed:", err);
     } finally {
-      setVotingOptionId(null); // Re-enable voting buttons
+      setVotingOptionId(null);
     }
   };
 
+
+  // --- NEW FUNCTION ---
+  const handleDeletePoll = async () => {
+      if (isDeleting) return; // Prevent double clicks
+
+      // Check if email is entered for authorization
+      if (!isEmailLike(userEmail)) {
+          setError("Please enter the admin email address to delete.");
+          return;
+      }
+
+      // Confirmation dialog
+      if (!window.confirm(`Are you sure you want to delete this poll? This action cannot be undone.`)) {
+          return;
+      }
+
+      setIsDeleting(true);
+      setError(null);
+
+      try {
+          const response = await fetch(`${API_BASE_URL}/polls/${pollId}`, {
+              method: 'DELETE',
+              headers: {
+                  'Content-Type': 'application/json',
+              },
+              // Send email in body for backend authorization check
+              body: JSON.stringify({ user_email: userEmail }),
+          });
+
+          if (response.status === 204) {
+              // Successful deletion (204 No Content)
+              alert('Poll deleted successfully!'); // Simple feedback
+              navigate('/'); // Redirect to home page
+          } else {
+              // Handle errors (403 Forbidden, 404 Not Found, 500 etc.)
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.message || `Failed to delete poll. Status: ${response.status}`);
+          }
+
+      } catch (err) {
+          setError(`Error deleting poll: ${err.message}`);
+          console.error("Poll deletion failed:", err);
+          setIsDeleting(false); // Re-enable button on error
+      }
+      // No finally block needed for setIsDeleting here because navigation happens on success
+  };
+
+
   if (loading) return <p className="loading-message">Loading poll details...</p>;
-  // Display error prominently if the poll couldn't load at all
   if (error && !poll) return <p className="error-message">Error loading poll: {error}</p>;
-  if (!poll) return <p>Poll details not available.</p>;
+  if (!poll) return <p>Poll not found or could not be loaded.</p>; // Handle case where poll becomes null after error
 
   return (
     <div className="poll-detail">
       <h2>{poll.question}</h2>
 
-      {/* Display general errors or voting errors */}
       {error && <p className="error-message">{error}</p>}
 
-      {/* Email Input - Show only if user hasn't successfully voted yet */}
+      {/* Email Input - Now used for voting AND deletion */}
+      {/* Consider adding separate prompts or labels if UI becomes confusing */}
       {!hasVoted && (
           <div className="form-group email-input-group">
-              <label htmlFor="userEmail">Your Email (to vote):</label>
+              <label htmlFor="userEmail">Your Email (required to vote/delete):</label>
               <input
                   type="email"
                   id="userEmail"
-                  placeholder="you@example.com"
+                  placeholder="you@example.com / admin@example.com"
                   value={userEmail}
                   onChange={(e) => setUserEmail(e.target.value)}
-                  disabled={votingOptionId !== null || hasVoted} // Disable if voting or already voted
+                  disabled={votingOptionId !== null || hasVoted || isDeleting}
                   required
               />
           </div>
       )}
 
-      {/* Display message if user has voted */}
       {hasVoted && <p className="voted-message">Thank you for voting!</p>}
 
       <ul className="options-list">
+        {/* ... (Keep existing options mapping as is) ... */}
         {poll.options && poll.options.map((option) => (
           <li key={option.id} className="option-item">
             <span className="option-text">{option.text}</span>
@@ -130,8 +173,7 @@ function PollDetail({ pollId }) {
             <button
               className="vote-button"
               onClick={() => handleVote(option.id)}
-              // Disable if email is invalid, voting is in progress, or already voted
-              disabled={!isEmailLike(userEmail) || votingOptionId !== null || hasVoted}
+              disabled={!isEmailLike(userEmail) || votingOptionId !== null || hasVoted || isDeleting}
             >
               {votingOptionId === option.id ? 'Voting...' : 'Vote'}
             </button>
@@ -139,10 +181,26 @@ function PollDetail({ pollId }) {
         ))}
          {!poll.options || poll.options.length === 0 && <p>No options found for this poll.</p>}
       </ul>
-       <p><small>Created: {new Date(poll.created_at).toLocaleString()}</small></p>
+
+      <p><small>Created: {new Date(poll.created_at).toLocaleString()}</small></p>
+
+      {/* --- NEW DELETE BUTTON SECTION --- */}
+      <div className="delete-section">
+          <hr />
+          <p>Enter admin email above and click delete to remove this poll.</p>
+          <button
+              className="delete-button"
+              onClick={handleDeletePoll}
+              disabled={!isEmailLike(userEmail) || isDeleting || hasVoted || votingOptionId !== null} // Disable if email invalid, deleting, voting, or already voted
+          >
+              {isDeleting ? 'Deleting...' : 'Delete Poll (Admin)'}
+          </button>
+          <p><small>(Requires email: admin@example.com)</small></p>
+      </div>
+      {/* --- END DELETE BUTTON SECTION --- */}
+
     </div>
   );
 }
 
 export default PollDetail;
-

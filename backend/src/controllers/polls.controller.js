@@ -1,5 +1,7 @@
 const pool = require('../db/connect');
 
+// --- Existing functions (createPoll, getAllPolls, getPollById) remain here ---
+
 // Controller to create a new poll
 exports.createPoll = async (req, res, next) => {
   const { question, options } = req.body;
@@ -82,5 +84,49 @@ exports.getPollById = async (req, res, next) => {
   } catch (error) {
     error.message = `Error fetching poll details: ${error.message}`;
     next(error);
+  }
+};
+
+
+// --- NEW FUNCTION ---
+// Controller to delete a poll (simple admin check)
+exports.deletePoll = async (req, res, next) => {
+  const { id } = req.params;
+  const { user_email } = req.body; // Expect email in request body for authorization check
+
+  // --- Validation ---
+  if (isNaN(parseInt(id))) {
+    return res.status(400).json({ message: 'Invalid Poll ID provided.' });
+  }
+  // Basic check for email presence
+  if (!user_email) {
+     return res.status(400).json({ message: 'Admin email is required to delete.' });
+  }
+
+  // --- Authorization (HIGHLY INSECURE - DEMO ONLY) ---
+  const adminEmail = "admin@example.com";
+  if (user_email.toLowerCase() !== adminEmail) {
+    console.warn(`Delete attempt denied for poll ${id} by email: ${user_email}`);
+    return res.status(403).json({ message: 'Forbidden: You do not have permission to delete this poll.' });
+  }
+
+  // --- Deletion ---
+  try {
+    // ON DELETE CASCADE in the options table FK will handle deleting associated options/votes
+    const query = 'DELETE FROM polls WHERE id = $1 RETURNING id';
+    const result = await pool.query(query, [id]);
+
+    if (result.rowCount === 0) {
+      // Poll with the given ID was not found
+      return res.status(404).json({ message: 'Poll not found' });
+    }
+
+    // Successfully deleted
+    console.log(`Poll ${id} deleted by admin email: ${user_email}`);
+    res.status(204).send(); // 204 No Content is appropriate for successful DELETE
+
+  } catch (error) {
+    error.message = `Error deleting poll: ${error.message}`;
+    next(error); // Pass DB or other errors to the central handler
   }
 };

@@ -328,3 +328,39 @@ ul:has(a > small) li small {
   }
 }
 
+        /* --- Additions for Delete Button --- */
+
+        .delete-section {
+          margin-top: 30px;
+          padding-top: 20px;
+          border-top: 1px dashed #dc3545; /* Dashed red border */
+          text-align: center;
+      }
+
+      .delete-section p {
+          margin-bottom: 10px;
+          color: #6c757d;
+      }
+
+      .delete-button {
+          background-color: #dc3545; /* Red */
+          border: 1px solid #dc3545;
+      }
+
+      .delete-button:hover {
+          background-color: #c82333; /* Darker red */
+          border-color: #c82333;
+      }
+
+      .delete-button:disabled {
+          background-color: #f1aeb5; /* Lighter red disabled */
+          border-color: #f1aeb5;
+      }
+
+      .delete-section small {
+          display: block;
+          margin-top: 5px;
+          font-size: 0.8rem;
+          color: #6c757d;
+      }
+      
