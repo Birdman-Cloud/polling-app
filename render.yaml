@@ -1,5 +1,5 @@
 # Render Blueprint specification for the Polling App Monorepo
-# Defines the Database, Backend Web Service, and Frontend Static Site
+# Defines the Database, Backend Web Service, and Frontend (as Web Service)
 
 services:
   # 1. PostgreSQL Database Service
@@ -9,7 +9,6 @@ services:
     user: polling_app_user # Desired database user
     plan: free # Specify the free instance type
     region: frankfurt # Or choose another region supporting free tier (e.g., ohio, oregon, singapore)
-    # ipAllowList: [] # Optional: restrict access. Render services connect automatically. Add 0.0.0.0/0 if you need external access during setup.
 
   # 2. Backend Web Service (Node.js/Express)
   - type: web
@@ -30,26 +29,24 @@ services:
           property: connectionString
       - key: NODE_ENV
         value: production # Set Node environment to production
-      # - key: PORT # Render injects PORT automatically, no need to set usually
-      #   value: 10000 # The backend code already uses process.env.PORT
 
-  # 3. Frontend Static Site (React/Vite)
-  - type: static_site # <-- CORRECTED TYPE HERE
-    name: polling-frontend # Name for your frontend static site service
+  # 3. Frontend "Static Site" (Served via Node.js 'serve' package)
+  - type: web # <-- CHANGED TYPE TO 'web'
+    name: polling-frontend # Name for your frontend service
+    runtime: node # We need Node.js to run the 'serve' command
     plan: free
-    region: frankfurt # Can be different, but often same region makes sense
+    region: frankfurt
     autoDeploy: true
-    branch: main # Or your main development branch
+    branch: main
     rootDir: frontend # Specifies that the code for this service is in the 'frontend' sub-directory
     buildCommand: npm install && npm run build # Install deps and build the static assets
-    publishDir: dist # The directory (relative to rootDir) containing the built static files (Vite default is 'dist')
+    # startCommand tells Render how to run the service after building
+    # npx serve: runs the serve package (installed via npm install)
+    # -s: Runs in single-page app mode (serves index.html for unknown paths)
+    # dist: The directory containing the built files to serve
+    # -l $PORT: Tells 'serve' to listen on the port Render provides via the $PORT env var
+    startCommand: npx serve -s dist -l $PORT
     envVars: # Environment variables needed *during the build*
       - key: VITE_API_URL # The frontend needs to know the backend URL
-        # Use the public URL Render generates for the backend service
-        # Replace 'polling-backend' if you used a different name for the backend service
-        value: https://polling-backend.onrender.com/api
-        # Note: If using custom domains, update this value accordingly.
-    routes: # Rewrite rule for Single Page Applications (SPAs) like React Router
-      - type: rewrite
-        source: /* # Match all paths
-        destination: /index.html # Serve index.html for client-side routing to handle the path
+        value: https://polling-backend.onrender.com/api # Use the public URL of the backend
+    # 'routes' and 'publishDir' are not used for 'web' type serving static files this way
