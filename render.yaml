@@ -34,7 +34,7 @@ services:
       #   value: 10000 # The backend code already uses process.env.PORT
 
   # 3. Frontend Static Site (React/Vite)
-  - type: static
+  - type: static_site # <-- CORRECTED TYPE HERE
     name: polling-frontend # Name for your frontend static site service
     plan: free
     region: frankfurt # Can be different, but often same region makes sense
