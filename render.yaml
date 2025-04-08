@@ -1,0 +1,55 @@
+# Render Blueprint specification for the Polling App Monorepo
+# Defines the Database, Backend Web Service, and Frontend Static Site
+
+services:
+  # 1. PostgreSQL Database Service
+  - type: pserv # Render type for PostgreSQL
+    name: polling-db # Name for your database service on Render
+    databaseName: polling_app_db # Desired database name inside PostgreSQL
+    user: polling_app_user # Desired database user
+    plan: free # Specify the free instance type
+    region: frankfurt # Or choose another region supporting free tier (e.g., ohio, oregon, singapore)
+    # ipAllowList: [] # Optional: restrict access. Render services connect automatically. Add 0.0.0.0/0 if you need external access during setup.
+
+  # 2. Backend Web Service (Node.js/Express)
+  - type: web
+    name: polling-backend # Name for your backend web service
+    runtime: node # Specify the runtime environment
+    plan: free
+    region: frankfurt # Keep in the same region as the database for low latency
+    autoDeploy: true # Automatically deploy on push to the specified branch
+    branch: main # Or your main development branch (e.g., master)
+    rootDir: backend # Specifies that the code for this service is in the 'backend' sub-directory
+    healthCheckPath: / # Render will check this path to see if the service is healthy
+    buildCommand: npm install # Command to install dependencies
+    startCommand: npm start # Command to run the application
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: # Automatically injects the connection string from the DB service defined above
+          name: polling-db # Must match the name of the database service
+          property: connectionString
+      - key: NODE_ENV
+        value: production # Set Node environment to production
+      # - key: PORT # Render injects PORT automatically, no need to set usually
+      #   value: 10000 # The backend code already uses process.env.PORT
+
+  # 3. Frontend Static Site (React/Vite)
+  - type: static
+    name: polling-frontend # Name for your frontend static site service
+    plan: free
+    region: frankfurt # Can be different, but often same region makes sense
+    autoDeploy: true
+    branch: main # Or your main development branch
+    rootDir: frontend # Specifies that the code for this service is in the 'frontend' sub-directory
+    buildCommand: npm install && npm run build # Install deps and build the static assets
+    publishDir: dist # The directory (relative to rootDir) containing the built static files (Vite default is 'dist')
+    envVars: # Environment variables needed *during the build*
+      - key: VITE_API_URL # The frontend needs to know the backend URL
+        # Use the public URL Render generates for the backend service
+        # Replace 'polling-backend' if you used a different name for the backend service
+        value: https://polling-backend.onrender.com/api
+        # Note: If using custom domains, update this value accordingly.
+    routes: # Rewrite rule for Single Page Applications (SPAs) like React Router
+      - type: rewrite
+        source: /* # Match all paths
+        destination: /index.html # Serve index.html for client-side routing to handle the path
